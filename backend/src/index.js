@@ -5,6 +5,9 @@ import { env } from "./utils/config.js";
 import apiRoutes from "./routes/api.js";
 import healthRoutes from "./routes/health.js";
 import aiRoutes from "./routes/ai.js";
+import fraudRoutes from "./routes/fraud.js";
+import trustRoutes from "./routes/trust.js";
+import accountRoutes from "./routes/account.js";
 import { getHederaClient } from "./hederaClient.js";
 import { generalLimiter } from "./middleware/rateLimiter.js";
 import { logger } from "./middleware/logger.js";
@@ -30,10 +33,22 @@ app.use(
 );
 app.use(express.json());
 app.use(logger);
-app.use("/api", generalLimiter);
+app.use("/api", (req, res, next) => {
+  // Exclude all fraud routes from the global generalLimiter
+  if (req.path.startsWith("/fraud")) {
+    return next();
+  }
+  return generalLimiter(req, res, next);
+});
+app.get('/api/dashboard-health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 app.use("/api", healthRoutes);
 app.use("/api", apiRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/fraud", fraudRoutes);
+app.use("/api/trust", trustRoutes);
+app.use("/api/account", accountRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -47,12 +62,18 @@ app.get("/", (req, res) => {
       registerBatch: "POST /api/register-batch",
       tokenizeBatch: "POST /api/tokenize-batch",
       verifyBatch: "GET /api/verify-batch/:tokenId/:serialNumber",
+      deleteAccount: "DELETE /api/account",
       ai: {
         analyzeImage: "POST /api/ai/analyze-image",
         summarizeProvenance: "POST /api/ai/summarize-provenance",
         buyerQA: "POST /api/ai/buyer-qa",
         translateMarketing: "POST /api/ai/translate-marketing",
         priceSuggestion: "POST /api/ai/price-suggestion",
+      },
+      fraud: {
+        analyzeBatch: "GET /api/fraud/batch/:batchId",
+        farmerScores: "GET /api/fraud/farmer/:farmerId",
+        overview: "GET /api/fraud/overview",
       },
     },
   });

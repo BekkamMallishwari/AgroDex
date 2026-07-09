@@ -3,10 +3,13 @@
 <h1>🌾 AgroDex 🌾</h1>
 
 <p align="center">
-  <b>AgroDex fights food fraud in Indonesia by pairing Hedera’s immutable ledger with Gemini AI for real-time food auditing.</b>
+  <b>AgroDex fights food fraud in Indonesia by pairing Hedera's immutable ledger with Gemini AI for real-time food auditing.</b>
 </p>
 
 ---
+
+![Downloads](https://img.shields.io/github/downloads/daviddprtma/AgroDex/total) ![Contributors](https://img.shields.io/github/contributors/daviddprtma/AgroDex?color=dark-green) ![Stargazers](https://img.shields.io/github/stars/daviddprtma/AgroDex?style=social) ![Issues](https://img.shields.io/github/issues/daviddprtma/AgroDex) ![License](https://img.shields.io/github/license/daviddprtma/AgroDex) ![Last Commit](https://img.shields.io/github/last-commit/daviddprtma/AgroDex) ![Repo Size](https://img.shields.io/github/repo-size/daviddprtma/AgroDex)
+
 
 <h3><i>🏆 Winner of Basic Track Problem Statement in Hello Future Hedera Ascension Hackathon 2025 🏆</i></h3>
 
@@ -66,12 +69,12 @@ Food fraud and missing traceability drain billions from the Indonesian agricultu
 We chose Hedera because predictable, low fees are the only sustainable option for low-margin Indonesian logistics.
 
 ### 🏛️ Hedera Services Utilized
-* **Hedera Consensus Service (HCS):** Every “proof” event (planting, harvest, etc.) is submitted via `TopicMessageSubmitTransaction` to our topic ID, producing a low-cost (~$0.0001) immutable audit log.
+* **Hedera Consensus Service (HCS):** Every "proof" event (planting, harvest, etc.) is submitted via `TopicMessageSubmitTransaction` to our topic ID, producing a low-cost (~$0.0001) immutable audit log.
 * **Hedera Token Service (HTS):** We mint the final certificate as a unique NFT using `TokenCreateTransaction`. HCS transaction IDs are embedded directly into the NFT metadata, structurally binding the asset to its evidence trail.
 * **Mirror Nodes:** The Verify page queries Mirror Nodes (via the SDK) to replay the HCS history and seamlessly demonstrate authenticity to buyers and judges.
 
 ### 💰 Economic Justification
-Widespread adoption in Indonesia demands sub-$1 fees per transaction. Hedera’s fixed, negligible HCS pricing lets us log thousands of logistical events for just a few dollars, keeping the business model completely viable.
+Widespread adoption in Indonesia demands sub-$1 fees per transaction. Hedera's fixed, negligible HCS pricing lets us log thousands of logistical events for just a few dollars, keeping the business model completely viable.
 
 ---
 
@@ -88,6 +91,51 @@ Widespread adoption in Indonesia demands sub-$1 fees per transaction. Hedera’s
 * **Bilingual Summaries:** Automatically generates intuitive provenance summaries in English and Indonesian.
 * **Buyer Q&A Chatbot:** Buyers can interact directly with a batch's history; the AI replies with cited HCS transaction IDs.
 * **Dashboard Insights:** Real-time business intelligence metrics surfacing on the main admin layout.
+
+### 🛡️ Risk Intelligence Engine (AI-Driven Fraud Detection)
+* **Deterministic Weighted Scoring:** A transparent rule engine assigns fraud risk scores (0–100) based on 7 independent signal detectors — Gemini AI never influences the score.
+* **Gemini Explanation Layer:** Gemini generates human-readable, compliance-ready narrative explanations for detected fraud signals — explanation only, never scoring.
+* **7 Fraud Signal Detectors:** Yield anomaly (±2σ), missing HCS lifecycle events, duplicate metadata, excessive batch frequency (>3/day), multiple NFT minting attempts, regional IQR outlier, and historical suspicious farmer activity.
+* **Risk Level Classification:** SAFE (0–19) · LOW (20–34) · MEDIUM (35–54) · HIGH (55–74) · CRITICAL (75–100).
+* **Persistent Fraud Scores:** All scores are stored in the `fraud_scores` Supabase table with a 1-hour cache — re-analysis is triggered automatically when stale.
+* **Risk Intelligence Dashboard:** A dedicated `/risk-intelligence` page with overview cards, high-risk batch monitor, farmer risk ranking, regional analytics bar chart, and a 30-day risk trend area chart.
+
+#### Fraud Signal Weights
+
+| Signal | Weight | Description |
+|---|:---:|---|
+| Multiple NFT Minting Attempts | +30 | >1 NFT token record for the same HCS transaction |
+| High Batch Creation Frequency | +25 | Farmer created >3 batches in any 24-hour window |
+| Yield Anomaly | +20 | Quantity deviates >2σ from farmer's historical mean |
+| Duplicate Metadata | +20 | Another batch shares identical name + location + harvest date |
+| Missing Lifecycle Events | +15 | Registered >7 days ago but never tokenized |
+| Regional Outlier | +15 | Quantity outside 1.5×IQR fence vs regional peers |
+| Historical Suspicious Activity | +10 | Farmer has prior HIGH/CRITICAL-rated batch |
+
+#### New API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/fraud/batch/:batchId` | Analyze a batch and return its risk score (cached 1h) |
+| `GET` | `/api/fraud/farmer/:farmerId` | All fraud scores for a farmer, sorted by risk |
+| `GET` | `/api/fraud/overview` | Aggregated stats for the Risk Intelligence dashboard |
+
+#### New Database Migration
+
+```sql
+-- fraud_scores table
+CREATE TABLE fraud_scores (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id       UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+  farmer_id      UUID,
+  risk_score     INTEGER NOT NULL CHECK (risk_score BETWEEN 0 AND 100),
+  risk_level     TEXT NOT NULL CHECK (risk_level IN ('SAFE','LOW','MEDIUM','HIGH','CRITICAL')),
+  reasons        JSONB NOT NULL DEFAULT '[]',
+  ai_explanation TEXT,
+  generated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ---
 
@@ -141,11 +189,18 @@ This is the instruction about how to get work with this project:
    cd ..
    ```
 <b>3.</b> Configure Environment Variables
-   ```sh
-   cp backend/.env.example backend/.env
-   // edit backend/.env and fill:
-   // OPERATOR_ID, OPERATOR_KEY, GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
-   ```
+   
+   - **Frontend**: Copy `.env.example` at the root of the project to `.env`:
+     ```sh
+     cp .env.example .env
+     ```
+     Open `.env` and configure `VITE_WALLETCONNECT_PROJECT_ID`. Contributors need to obtain their own WalletConnect Project ID by registering their dApp on the [WalletConnect Cloud Dashboard](https://cloud.walletconnect.com/).
+     
+   - **Backend**: Copy `backend/.env.example` to `backend/.env`:
+     ```sh
+     cp backend/.env.example backend/.env
+     ```
+     Edit `backend/.env` and fill in: `OPERATOR_ID`, `OPERATOR_KEY`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 <b>4.</b> Seed the demo data
    ```sh
    cd backend
@@ -163,6 +218,18 @@ npm run dev
 # Terminal 2 (Frontend)
 cd ..
 npm run dev
+   ```
+
+<b>6.</b> End-to-End Testing (Playwright)
+   ```sh
+   # Install Playwright browsers (first time only)
+   npx playwright install --with-deps
+
+   # Run the E2E test suite (ensure dev server is NOT running, Playwright will start it)
+   npx playwright test
+
+   # Run tests in UI mode for interactive debugging
+   npx playwright test --ui
    ```
 
 ---
@@ -185,7 +252,7 @@ npm run dev
      - Extracting embedded images or assets and adding them to `/assets/`.  
      - Moving CSS/JS into separate files.  
      - Updating README or file structure consistency.  
-   - Submit your PR under the “maintenance” label.
+   - Submit your PR under the "maintenance" label.
 
 ---
 
@@ -274,8 +341,8 @@ CREATE INDEX idx_batches_deleted_at ON batches(deleted_at);
 ## 🗺️ Roadmap
 
 - [v] Q4 2025 - Testnet Prototype
-- [] Q1 2026 - Pilot with Co-ops
-- [] Q2 2026 - HashConnect Wallet Integration
+- [v] Q1 2026 - Pilot with Co-ops
+- [v] Q2 2026 - HashConnect Wallet Integration
 - [] Q3 2026- Mainnet Launch & Scaling
 
 ---

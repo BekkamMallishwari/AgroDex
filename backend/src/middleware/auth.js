@@ -1,8 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { env } from '../utils/config.js';
-
-// Create Supabase client for auth verification
-const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+import { supabase } from '../db.js';
 
 /**
  * Middleware to verify Supabase JWT token
@@ -49,8 +45,12 @@ export async function optionalAuth(req, res, next) {
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const { data: { user } } = await supabase.auth.getUser(token);
-      req.user = user || null;
+      if (token && token !== 'undefined' && token !== 'null') {
+        const { data } = await supabase.auth.getUser(token);
+        req.user = data?.user || null;
+      } else {
+        req.user = null;
+      }
     } else {
       req.user = null;
     }

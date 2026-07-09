@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { signInWithMetaMask as signInWithMetaMaskService } from "@/lib/metaMaskAuth";
 
 interface AuthContextType {
   user: User | null;
@@ -8,6 +9,9 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   linkHederaWallet: (accountId: string) => Promise<void>;
+  signInWithMetaMask: (statement?: string) => Promise<{ error: Error | null }>;
+  isMetaMaskConnected: boolean;
+  metaMaskAddress: string | undefined;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,15 +21,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Determine if the current user signed in with MetaMask
+  const isMetaMaskConnected = user !== null && !user.email && !!user.user_metadata?.address;
+  const metaMaskAddress = user?.user_metadata?.address || user?.user_metadata?.sub || undefined;
+
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -46,7 +52,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error("Caught error during sign out:", err);
     } finally {
-      // Always forcefully clear local storage tokens to prevent getting stuck
       if (typeof window !== "undefined") {
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const key = localStorage.key(i);
@@ -55,7 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-      // Forcefully update local React state
       setSession(null);
       setUser(null);
     }
@@ -75,12 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
+  const signInWithMetaMask = async (statement?: string) => {
+    const { error } = await signInWithMetaMaskService(statement);
+    return { error };
+  };
+
   const value = {
     user,
     session,
     loading,
     signOut,
     linkHederaWallet,
+    signInWithMetaMask,
+    isMetaMaskConnected,
+    metaMaskAddress,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

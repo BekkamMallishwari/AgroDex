@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { LanguageSelector } from '@/components/LanguageSelector';
-import { useTranslation } from 'react-i18next';
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,10 +19,13 @@ import {
   LogOut,
   Menu,
   BarChart3,
+  BrainCircuit,
   Wallet,
+  Info,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWallet } from "@/hooks/useWallet";
+import { useCoreWallet } from "@/hooks/useCoreWallet";
 import { useState } from "react";
 import { useServiceStatus } from "@/hooks/useServiceStatus";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -31,10 +34,23 @@ import logoUrl from "@/assets/agritrust-logo.png";
 export default function Navbar() {
   const { user, signOut } = useAuth();
   const { t } = useTranslation();
-  const { accountId, isConnected, network, disconnect } = useWallet();
+  const {
+    accountId,
+    isConnected: isHPConnected,
+    network,
+    disconnect: hpDisconnect,
+  } = useWallet();
+  const {
+    address: coreAddress,
+    isConnected: isCoreConnected,
+    disconnect: coreDisconnect,
+  } = useCoreWallet();
+  const isConnected = isHPConnected || isCoreConnected;
+  const isAuthenticated = !!user || isConnected;
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isSuccess, isError } = useServiceStatus();
+  const isPublicJourney = location.pathname.startsWith("/journey");
+  const { isSuccess, isError } = useServiceStatus(!isPublicJourney);
 
   // Déterminer la couleur et le texte du tooltip
   let statusColor = "bg-gray-400";
@@ -48,21 +64,25 @@ export default function Navbar() {
   }
 
   const navLinks = [
-    { to: "/dashboard", label: t('nav.dashboard'), icon: BarChart3 },
-    { to: "/register", label: t('nav.register'), icon: FileText },
-    { to: "/tokenize", label: t('nav.tokenize'), icon: Coins },
-    { to: "/verify", label: t('nav.verify'), icon: ShieldCheck },
+    { to: "/dashboard", label: t("nav.dashboard"), icon: BarChart3 },
+    { to: "/risk-intelligence", label: "Risk AI", icon: BrainCircuit },
+    { to: "/register", label: t("nav.register"), icon: FileText },
+    { to: "/tokenize", label: t("nav.tokenize"), icon: Coins },
+    { to: "/verify", label: t("nav.verify"), icon: ShieldCheck },
+    { to: "/about", label: t("nav.about"), icon: Info },
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) =>
+    location.pathname === path ||
+    (path.startsWith("/journey") && location.pathname.startsWith("/journey"));
 
-  // Display name: prefer email if logged in via Supabase, otherwise show wallet account
-  const displayName = user?.email || (isConnected && accountId) || "User";
+  const accountLabel = user ? "Account" : isConnected ? "Wallet" : "User";
 
-  // Handle logout: sign out from Supabase AND disconnect wallet
+  // Handle logout: sign out from Supabase AND disconnect wallets
   const handleLogout = async () => {
     if (user) await signOut();
-    if (isConnected) await disconnect();
+    if (isHPConnected) await hpDisconnect();
+    if (isCoreConnected) await coreDisconnect();
   };
 
   return (
@@ -88,7 +108,7 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-1">
             {navLinks.map(({ to, label, icon: Icon }) => (
               <Link key={to} to={to}>
                 <Button
@@ -107,10 +127,10 @@ export default function Navbar() {
           </nav>
 
           {/* Desktop User Menu */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             {/* Wallet indicator (shown when connected via wallet) */}
-            {isConnected && accountId && (
-              <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
+            {isHPConnected && accountId && (
+              <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/50">
                 <Wallet className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                 <span className="text-xs font-mono text-blue-700 dark:text-blue-300">
                   {accountId}
@@ -123,18 +143,25 @@ export default function Navbar() {
                 />
               </div>
             )}
+            {isCoreConnected && coreAddress && (
+              <div className="flex items-center gap-1.5 bg-purple-50 dark:bg-purple-950/30 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50">
+                <Wallet className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                <span className="text-xs font-mono text-purple-700 dark:text-purple-300 truncate max-w-[100px]">
+                  {coreAddress.slice(0, 6)}...{coreAddress.slice(-4)}
+                </span>
+              </div>
+            )}
             <LanguageSelector />
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-2 rounded-lg border border-gray-100 dark:border-slate-800"></div>
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-2 rounded-lg border border-gray-100 dark:border-slate-800">
-              <User className="h-4 w-4 text-gray-600 dark:text-slate-400" />
-              <span className="text-sm font-body text-gray-700 dark:text-slate-300 max-w-[150px] truncate">
-                {displayName}
-              </span>
-            </div>
             <ThemeToggle />
+            {/* if user not logged it, then hide the dropdownmenu */}
+            {isAuthenticated && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open settings menu"
+                >
                   <Settings className="h-5 w-5 text-gray-600 dark:text-slate-400" />
                 </Button>
               </DropdownMenuTrigger>
@@ -142,13 +169,13 @@ export default function Navbar() {
                 <DropdownMenuItem asChild>
                   <Link to="/profile" className="cursor-pointer">
                     <User className="h-4 w-4 mr-2" />
-                    {t('nav.profile')}
+                    {t("nav.profile")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/session-settings" className="cursor-pointer">
                     <Settings className="h-4 w-4 mr-2" />
-                    {t('nav.settings')}
+                    {t("nav.settings")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -157,34 +184,42 @@ export default function Navbar() {
                   className="cursor-pointer text-red-600"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
-                  {t('nav.logout')}
+                  {t("nav.logout")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
 
           {/* Mobile Menu */}
-          <div className="flex items-center gap-2 md:hidden">
+          <div className="flex items-center gap-2 lg:hidden">
             <ThemeToggle />
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open navigation menu"
+                >
                   <Menu className="h-6 w-6 text-gray-700 dark:text-slate-300" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[280px] sm:w-[320px] dark:bg-slate-950 dark:border-slate-800">
+              <SheetContent
+                side="right"
+                className="w-[280px] sm:w-[320px] dark:bg-slate-950 dark:border-slate-800"
+              >
                 <div className="flex flex-col gap-6 mt-8">
                   {/* User Info */}
                   <div className="flex items-center gap-3 bg-gray-50 dark:bg-slate-900 px-4 py-3 rounded-lg border border-gray-100 dark:border-slate-800">
                     <User className="h-5 w-5 text-gray-600 dark:text-slate-400" />
                     <span className="text-sm font-body text-gray-700 dark:text-slate-300 truncate">
-                      {displayName}
+                      {accountLabel}
                     </span>
                   </div>
 
                   {/* Wallet info (mobile) */}
-                  {isConnected && accountId && (
-                    <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-800">
+                  {isHPConnected && accountId && (
+                    <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-800/50">
                       <Wallet className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       <span className="text-xs font-mono text-blue-700 dark:text-blue-300 truncate">
                         {accountId}
@@ -192,11 +227,19 @@ export default function Navbar() {
                       <span
                         className={`ml-auto px-2 py-0.5 text-xs rounded-full font-semibold ${
                           network === "testnet"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-green-100 text-green-700"
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                            : "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300"
                         }`}
                       >
                         {network}
+                      </span>
+                    </div>
+                  )}
+                  {isCoreConnected && coreAddress && (
+                    <div className="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/30 px-4 py-2 rounded-lg border border-purple-200 dark:border-purple-800/50">
+                      <Wallet className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                      <span className="text-xs font-mono text-purple-700 dark:text-purple-300 truncate">
+                        {coreAddress.slice(0, 6)}...{coreAddress.slice(-4)}
                       </span>
                     </div>
                   )}
@@ -229,13 +272,16 @@ export default function Navbar() {
 
                   {/* User Actions */}
                   <div className="flex flex-col gap-2">
-                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)}>
+                    <Link
+                      to="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
                       <Button
                         variant="ghost"
                         className="w-full justify-start text-gray-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                       >
                         <User className="h-4 w-4 mr-2" />
-                        {t('nav.profile')}
+                        {t("nav.profile")}
                       </Button>
                     </Link>
                     <Link
@@ -247,7 +293,7 @@ export default function Navbar() {
                         className="w-full justify-start text-gray-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                       >
                         <Settings className="h-4 w-4 mr-2" />
-                        {t('nav.settings')}
+                        {t("nav.settings")}
                       </Button>
                     </Link>
                     <Button
@@ -259,7 +305,7 @@ export default function Navbar() {
                       }}
                     >
                       <LogOut className="h-4 w-4 mr-2" />
-                      {t('nav.logout')}
+                      {t("nav.logout")}
                     </Button>
                   </div>
                 </div>
